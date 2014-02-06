@@ -150,7 +150,8 @@ object ChannelOwner {
   }
 }
 
-class ChannelOwner(init: Seq[Request] = Seq.empty[Request], channelParams: Option[ChannelParameters] = None) extends Actor with ActorLogging {
+class ChannelOwner(init: Seq[Request] = Seq.empty[Request], channelParams: Option[ChannelParameters] = None)
+    extends Actor with UnboundedStash with ActorLogging {
 
   import ChannelOwner._
 
@@ -160,8 +161,13 @@ class ChannelOwner(init: Seq[Request] = Seq.empty[Request], channelParams: Optio
   override def preStart() = context.parent ! ConnectionOwner.CreateChannel
 
   override def unhandled(message: Any): Unit = {
-    log.warning(s"unhandled message $message")
-    super.unhandled(message)
+    message match {
+      case request: Request => stash()
+      case _ => {
+        log.warning(s"unhandled message $message")
+        super.unhandled(message)
+      }
+    }
   }
 
   def onChannel(channel: Channel, forwarder: ActorRef): Unit = {
@@ -179,6 +185,7 @@ class ChannelOwner(init: Seq[Request] = Seq.empty[Request], channelParams: Optio
       requestLog.map(r => self forward r)
       log.info(s"got channel $channel")
       statusListener.map(a => a ! Connected)
+      unstashAll()
       context.become(connected(channel, forwarder))
     }
     case Record(request: Request) => {
